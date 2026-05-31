@@ -14,10 +14,10 @@ const LEVELS = [
   {
     name:"Block the Heat",
     timer:55, need:0.25,
-    heaters:[ rect(40,30,4,12) ],                                  // burner at the mouth
+    heaters:[ rect(10,30,4,12) ],                                  // burner at the mouth
     walls:[ rect(48,26,24,4), rect(48,42,24,4), rect(68,26,4,20) ],// pocket: top, bottom, right
     ice:   rect(48,30,20,12),                                      // cube inside; mouth (4-cell gap) faces left
-    tools:[ {type:INSUL, w:4, h:12, count:1, name:"Insulator", desc:"Blocks heat flow"} ],
+    tools:[ {type:INSUL, w:4, h:12, count:10, name:"Insulator", desc:"Blocks heat flow"} ],
     hint:"The cube's shelter has one open mouth, right at the flame. Drop the insulator into the gap to seal it in."
   },
   {

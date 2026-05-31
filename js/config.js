@@ -9,7 +9,7 @@ const DT = 0.13333;            // sim time per substep (stable: dt < 1/(4*alpha_
 const TIME_PER_FRAME = SUBSTEPS * DT; // sim-units advanced each frame
 
 // ---------- thermodynamics ----------
-const AMBIENT  = 2;             // cold room (C) — ice melts from the heater, not the air
+const AMBIENT  = -10;             // cold room (C) — ice melts from the heater, not the air
 const HEATER_T = 260;           // heater fixed temp (C)
 const COOLER_T = -28;           // cooler fixed temp (C)
 const MELT_T   = 0;             // ice melting point (C)
