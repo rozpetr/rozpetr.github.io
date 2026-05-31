@@ -17,12 +17,23 @@ const ictx = iceCanvas.getContext("2d");
 const iceImg = ictx.createImageData(W,H);
 
 function tempColor(t){
-  // map -30..190 C -> cold blue .. teal .. yellow .. red
-  const u = Math.max(0,Math.min(1,(t-(-30))/(190-(-30))));
-  let r,g,b;
-  if(u<0.5){ const k=u/0.5;       r=40+k*40;  g=90+k*150;  b=255-k*100; }
-  else     { const k=(u-0.5)/0.5; r=80+k*175; g=240-k*150; b=155-k*120; }
-  return [r|0,g|0,b|0];
+  if(window.ICE_RESCUE_THERMAL && window.ICE_RESCUE_THERMAL.tempColor){
+    return window.ICE_RESCUE_THERMAL.tempColor(t);
+  }
+
+  // fallback palette if thermalPalette.js was not loaded
+  const u = Math.max(0, Math.min(1, (t - (-5)) / (95 - (-5))));
+  let r, g, b;
+  if(u < 0.25){
+    const k = u / 0.25; r = 30 + k * 4; g = 64 + k * 147; b = 175 + k * 63;
+  } else if(u < 0.50){
+    const k = (u - 0.25) / 0.25; r = 34 + k * 216; g = 211 - k * 7; b = 238 - k * 217;
+  } else if(u < 0.72){
+    const k = (u - 0.50) / 0.22; r = 250 - k; g = 204 - k * 89; b = 21 + k;
+  } else {
+    const k = (u - 0.72) / 0.28; r = 249 - k * 29; g = 115 - k * 77; b = 22 + k * 16;
+  }
+  return [r|0, g|0, b|0];
 }
 
 function render(drag, hover){

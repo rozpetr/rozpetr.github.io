@@ -2,6 +2,9 @@
 /* Entry: UI tray, drag-drop placement, buttons, level lifecycle, rAF loop. */
 
 let running=false, finished=false, simTime=0;
+let lastFrameMs = performance.now();
+let physicsAccumulator = 0;
+const REAL_STEP = 1 / 60;
 let inv=[];          // remaining counts per tool slot
 let drag=null;       // {type,w,h,slot} while dragging
 let hover=null;      // {x,y} top-left grid cell of ghost
@@ -9,7 +12,7 @@ let hover=null;      // {x,y} top-left grid cell of ghost
 const el = id => document.getElementById(id);
 
 // ---------- helpers ----------
-function elapsedSeconds(){ return simTime/(TIME_PER_FRAME*60); }   // sim-units -> ~sec @60fps
+function elapsedSeconds(){ return simTime; }
 function evtCell(e){
   const r=cv.getBoundingClientRect();
   return {
@@ -104,6 +107,8 @@ el("bannerBtn").onclick = ()=>{
 // ---------- lifecycle ----------
 function loadLevel(li){
   levelIndex=li; running=false; finished=false; simTime=0;
+  physicsAccumulator = 0;
+  lastFrameMs = performance.now();
   placed=[]; inv=LEVELS[li].tools.map(t=>t.count);
   buildLevel(li);
   el("banner").classList.remove("show");
@@ -122,14 +127,28 @@ function finish(win){
 
 // ---------- main loop ----------
 function loop(){
+  const now = performance.now();
+  let realDt = (now - lastFrameMs) / 1000;
+  lastFrameMs = now;
+
+  if(realDt > 0.25) realDt = 0.25;
+
   if(running && !finished){
-    step();
-    simTime += TIME_PER_FRAME;
-    const L=LEVELS[levelIndex];
-    const remain=iceRemaining();
-    if(remain<=0.001) finish(false);
-    else if(elapsedSeconds()>=L.timer) finish(remain>=L.need);
+    physicsAccumulator += realDt;
+
+    while(physicsAccumulator >= REAL_STEP && running && !finished){
+      step();
+      simTime += REAL_STEP;
+      physicsAccumulator -= REAL_STEP;
+
+      const L=LEVELS[levelIndex];
+      const remain=iceRemaining();
+
+      if(remain<=0.001) finish(false);
+      else if(elapsedSeconds()>=L.timer) finish(remain>=L.need);
+    }
   }
+
   render(drag,hover);
   refreshHUD();
   requestAnimationFrame(loop);
