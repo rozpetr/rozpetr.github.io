@@ -21,7 +21,14 @@
       </div>
 
       <div class="canvasRow">
-        <canvas id="cv" aria-label="Тепловое поле"></canvas>
+        <div class="fieldPanel">
+          <canvas id="cv" aria-label="Тепловое поле"></canvas>
+          <div class="thermalLegend" aria-label="Шкала температуры">
+            <span id="tempScaleMin">-- °C</span>
+            <div class="thermalRamp"></div>
+            <span id="tempScaleMax">-- °C</span>
+          </div>
+        </div>
         <aside class="graphPanel">
           <div class="panelTitle">Масса объекта</div>
           <canvas id="massGraph" aria-label="График массы объекта"></canvas>
@@ -29,7 +36,7 @@
             <span><i class="hot"></i>источник</span>
             <span><i class="object"></i>объект</span>
             <span><i class="insul"></i>изолятор</span>
-            <span><i class="cooler"></i>охладитель</span>
+            <!-- <span><i class="cooler"></i>охладитель</span> -->
           </div>
         </aside>
       </div>
@@ -75,7 +82,7 @@
           <button type="button" data-tool="source" class="active">Источник</button>
           <button type="button" data-tool="object">Объект</button>
           <button type="button" data-tool="insulator">Изолятор</button>
-          <button type="button" data-tool="cooler">Охладитель</button>
+          <!-- <button type="button" data-tool="cooler">Охладитель</button> -->
           <button type="button" data-tool="eraser">Стереть</button>
         </div>
       </div>

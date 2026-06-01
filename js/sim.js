@@ -332,7 +332,10 @@ function paintObstacle(cx, cy, type){
 
       const i = idx(x, y);
       if(obstacleMask[i] !== type){
+        const currentTemp = T ? tempFromCellEnthalpy(i) : simState.material.meltTemp + simState.ambientDelta;
         obstacleMask[i] = type;
+        enthalpy[i] = enthalpyFromCellTemp(i, currentTemp);
+        T[i] = currentTemp;
         changed = true;
       }
     }

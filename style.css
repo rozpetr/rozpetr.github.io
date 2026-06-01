@@ -56,6 +56,7 @@ h1{font-size:22px;line-height:1.1;margin:0 0 4px}
 .readouts span{display:block;color:var(--muted);font-size:12px}
 .readouts b{font-variant-numeric:tabular-nums;font-size:16px}
 .canvasRow{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start}
+.fieldPanel{width:600px;max-width:100%}
 canvas{
   display:block;
   background:#071018;
@@ -66,6 +67,22 @@ canvas{
   height:600px;
   cursor:crosshair;
   touch-action:none;
+}
+.thermalLegend{
+  display:grid;
+  grid-template-columns:auto 1fr auto auto;
+  align-items:center;
+  gap:8px;
+  color:var(--muted);
+  font-size:12px;
+  margin-top:10px;
+  font-variant-numeric:tabular-nums;
+}
+.thermalRamp{
+  height:12px;
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,.16);
+  background:linear-gradient(90deg,#1e40af 0%,#22d3ee 24%,#facc15 48%,#f97316 68%,#ef4444 84%,#991b1b 100%);
 }
 .graphPanel{
   border-radius:8px;
@@ -142,6 +159,7 @@ button.danger{background:#ff7c7c;color:#270606}
   .app{grid-template-columns:1fr}
   .panel{order:-1}
   .canvasRow{grid-template-columns:1fr}
-  #cv{width:min(100%,600px);height:auto;aspect-ratio:1}
+  .fieldPanel{width:min(100%,600px)}
+  #cv{width:100%;height:auto;aspect-ratio:1}
   .readouts{min-width:0}
 }

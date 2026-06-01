@@ -8,14 +8,16 @@
 (function(){
   const MIN_TEMP = -5;
   const MAX_TEMP = 55;
-  const GAMMA = 0.55;
+  const GAMMA = 0.72;
 
   const STOPS = [
     { at: 0.00, rgb: [30, 64, 175] },
     { at: 0.25, rgb: [34, 211, 238] },
     { at: 0.50, rgb: [250, 204, 21] },
-    { at: 0.72, rgb: [249, 115, 22] },
-    { at: 1.00, rgb: [220, 38, 38] },
+    { at: 0.68, rgb: [249, 115, 22] },
+    { at: 0.82, rgb: [239, 68, 68] },
+    { at: 0.92, rgb: [185, 28, 28] },
+    { at: 1.00, rgb: [127, 29, 29] },
   ];
 
   function clamp01(value){
@@ -43,7 +45,8 @@
       const right = STOPS[i + 1];
 
       if(u >= left.at && u <= right.at){
-        const local = (u - left.at) / (right.at - left.at);
+        const rawLocal = (u - left.at) / (right.at - left.at);
+        const local = rawLocal * rawLocal * (3 - 2 * rawLocal);
         return mixRgb(left.rgb, right.rgb, local);
       }
     }

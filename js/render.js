@@ -22,10 +22,11 @@ objectCanvas.height = H;
 const octx = objectCanvas.getContext("2d");
 const objectImg = octx.createImageData(W, H);
 
-function tempColor(temp){
-  const m = simState.material;
-  const minTemp = m.meltTemp + simState.objectInitDelta - 2;
-  const maxTemp = m.meltTemp + simState.ambientDelta + 16;
+let heatScale = { min: -7, max: 1000, mid: (1000-7)/2.0 };
+
+function tempColor(temp, range = heatScale){
+  const minTemp = range.min;
+  const maxTemp = range.max;
 
   if(window.ICE_RESCUE_THERMAL && window.ICE_RESCUE_THERMAL.tempColor){
     return window.ICE_RESCUE_THERMAL.tempColor(temp, minTemp, maxTemp);
@@ -37,6 +38,7 @@ function tempColor(temp){
     [40, 180, 210],
     [245, 210, 80],
     [235, 95, 46],
+    [153, 27, 27],
   ];
   const scaled = u * (stops.length - 1);
   const left = Math.floor(scaled);
@@ -45,20 +47,46 @@ function tempColor(temp){
   return [0, 1, 2].map(i => Math.round(stops[left][i] + (stops[right][i] - stops[left][i]) * t));
 }
 
+function updateHeatScale(){
+  const m = simState.material;
+  const values = Array.from(T);
+  values.sort((a, b) => a - b);
+
+  const p = value => values[Math.min(values.length - 1, Math.max(0, Math.floor((values.length - 1) * value)))];
+  const cold = p(0.02);
+  const hot = p(0.995);
+  const baseMin = m.meltTemp + Math.min(simState.objectInitDelta, simState.ambientDelta) - 3;
+  const baseMax = m.meltTemp + Math.max(simState.objectInitDelta, simState.ambientDelta) + 16;
+
+  let min = Math.min(baseMin, cold);
+  let max = Math.max(baseMax, hot);
+  if(max - min < 8) max = min + 8;
+
+  heatScale = {
+    min,
+    max,
+    mid: (min + max) / 2,
+  };
+
+  return heatScale;
+}
+
 function render(){
-  drawHeatField();
+  //const range = updateHeatScale();
+  drawHeatField(heatScale);
   drawObject();
   drawObstacles();
   drawSources();
   drawGrid();
   drawObjectContour();
   drawMassGraph();
+  updateTemperatureLegend(heatScale);
 }
 
-function drawHeatField(){
+function drawHeatField(range){
   const data = fieldImg.data;
   for(let i = 0; i < W * H; i++){
-    const [r, g, b] = tempColor(T[i]);
+    const [r, g, b] = tempColor(T[i], range);
     const o = i * 4;
     data[o] = r;
     data[o + 1] = g;
@@ -69,6 +97,17 @@ function drawHeatField(){
   fctx.putImageData(fieldImg, 0, 0);
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(fieldCanvas, 0, 0, cv.width, cv.height);
+}
+
+function updateTemperatureLegend(range){
+  const min = document.getElementById("tempScaleMin");
+  //const mid = document.getElementById("tempScaleMid");
+  const max = document.getElementById("tempScaleMax");
+  if(!min  || !max) return;
+
+  min.textContent = `${range.min.toFixed(1)} °C`;
+  //mid.textContent = `${range.mid.toFixed(1)} °C`;
+  max.textContent = `${range.max.toFixed(1)} °C`;
 }
 
 function drawObject(){
