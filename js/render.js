@@ -1,104 +1,219 @@
 "use strict";
-/* Canvas setup + drawing: heat field, ice blob, tool/heater overlays, ghost. */
 
 const cv = document.getElementById("cv");
-cv.width = W*SCALE; cv.height = H*SCALE;
+cv.width = W * SCALE;
+cv.height = H * SCALE;
 const ctx = cv.getContext("2d");
 
-// offscreen 1px-per-cell buffers, upscaled to canvas
+const graph = document.getElementById("massGraph");
+graph.width = 320;
+graph.height = 230;
+const gctx = graph.getContext("2d");
+
 const fieldCanvas = document.createElement("canvas");
-fieldCanvas.width=W; fieldCanvas.height=H;
+fieldCanvas.width = W;
+fieldCanvas.height = H;
 const fctx = fieldCanvas.getContext("2d");
-const fieldImg = fctx.createImageData(W,H);
+const fieldImg = fctx.createImageData(W, H);
 
-const iceCanvas = document.createElement("canvas");
-iceCanvas.width=W; iceCanvas.height=H;
-const ictx = iceCanvas.getContext("2d");
-const iceImg = ictx.createImageData(W,H);
+const objectCanvas = document.createElement("canvas");
+objectCanvas.width = W;
+objectCanvas.height = H;
+const octx = objectCanvas.getContext("2d");
+const objectImg = octx.createImageData(W, H);
 
-function tempColor(t){
+function tempColor(temp){
+  const m = simState.material;
+  const minTemp = m.meltTemp + simState.objectInitDelta - 2;
+  const maxTemp = m.meltTemp + simState.ambientDelta + 16;
+
   if(window.ICE_RESCUE_THERMAL && window.ICE_RESCUE_THERMAL.tempColor){
-    return window.ICE_RESCUE_THERMAL.tempColor(t);
+    return window.ICE_RESCUE_THERMAL.tempColor(temp, minTemp, maxTemp);
   }
 
-  // fallback palette if thermalPalette.js was not loaded
-  const u = Math.max(0, Math.min(1, (t - (-5)) / (95 - (-5))));
-  let r, g, b;
-  if(u < 0.25){
-    const k = u / 0.25; r = 30 + k * 4; g = 64 + k * 147; b = 175 + k * 63;
-  } else if(u < 0.50){
-    const k = (u - 0.25) / 0.25; r = 34 + k * 216; g = 211 - k * 7; b = 238 - k * 217;
-  } else if(u < 0.72){
-    const k = (u - 0.50) / 0.22; r = 250 - k; g = 204 - k * 89; b = 21 + k;
-  } else {
-    const k = (u - 0.72) / 0.28; r = 249 - k * 29; g = 115 - k * 77; b = 22 + k * 16;
-  }
-  return [r|0, g|0, b|0];
+  const u = clamp((temp - minTemp) / (maxTemp - minTemp), 0, 1);
+  const stops = [
+    [22, 62, 150],
+    [40, 180, 210],
+    [245, 210, 80],
+    [235, 95, 46],
+  ];
+  const scaled = u * (stops.length - 1);
+  const left = Math.floor(scaled);
+  const right = Math.min(stops.length - 1, left + 1);
+  const t = scaled - left;
+  return [0, 1, 2].map(i => Math.round(stops[left][i] + (stops[right][i] - stops[left][i]) * t));
 }
 
-function render(drag, hover){
-  // 1) heat field
-  const d=fieldImg.data;
-  for(let i=0;i<W*H;i++){
-    const [r,g,b]=tempColor(T[i]);
-    const o=i*4; d[o]=r; d[o+1]=g; d[o+2]=b; d[o+3]=255;
-  }
-  fctx.putImageData(fieldImg,0,0);
-  ctx.imageSmoothingEnabled=true;
-  ctx.drawImage(fieldCanvas,0,0,cv.width,cv.height);
-
-  // 2) ice fill (smoothed upscale)
-  const id=iceImg.data;
-  for(let i=0;i<W*H;i++){
-    const f = mat[i]===ICE ? latent[i]/L_CELL : 0;
-    const o=i*4;
-    if(f>0.15){ id[o]=200; id[o+1]=235; id[o+2]=255; id[o+3]=Math.min(255,f*230+25); }
-    else { id[o+3]=0; }
-  }
-  ictx.putImageData(iceImg,0,0);
-  ctx.drawImage(iceCanvas,0,0,cv.width,cv.height);
-
-  // 3) crisp ice outline (marching squares)
-  const segs=contourSegments();
-  ctx.lineWidth=2; ctx.strokeStyle="rgba(230,248,255,.9)"; ctx.beginPath();
-  const h=SCALE*0.5;
-  for(const s of segs){ ctx.moveTo(s[0]*SCALE+h,s[1]*SCALE+h); ctx.lineTo(s[2]*SCALE+h,s[3]*SCALE+h); }
-  ctx.stroke();
-
-  // 4) tool regions
-  drawMaterialBorders();
-
-  // 5) heaters
-  LEVELS[levelIndex].heaters.forEach(drawHeater);
-
-  // 6) drag ghost
-  if(drag && hover) drawGhost(drag,hover);
+function render(){
+  drawHeatField();
+  drawObject();
+  drawObstacles();
+  drawSources();
+  drawGrid();
+  drawObjectContour();
+  drawMassGraph();
 }
 
-function drawMaterialBorders(){
-  ctx.imageSmoothingEnabled=false;
-  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
-    const m=mat[idx(x,y)];
-    if(m===INSUL || m===COOLER){
-      ctx.fillStyle = m===INSUL ? "rgba(154,123,79,.85)" : "rgba(63,210,255,.42)";
-      ctx.fillRect(x*SCALE,y*SCALE,SCALE,SCALE);
+function drawHeatField(){
+  const data = fieldImg.data;
+  for(let i = 0; i < W * H; i++){
+    const [r, g, b] = tempColor(T[i]);
+    const o = i * 4;
+    data[o] = r;
+    data[o + 1] = g;
+    data[o + 2] = b;
+    data[o + 3] = 255;
+  }
+
+  fctx.putImageData(fieldImg, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(fieldCanvas, 0, 0, cv.width, cv.height);
+}
+
+function drawObject(){
+  const data = objectImg.data;
+  for(let i = 0; i < W * H; i++){
+    const solid = objectMask[i] ? 1 - liquidFraction[i] : 0;
+    const o = i * 4;
+    if(solid > 0.01){
+      data[o] = 215;
+      data[o + 1] = 246;
+      data[o + 2] = 255;
+      data[o + 3] = Math.round(45 + solid * 205);
+    } else {
+      data[o + 3] = 0;
+    }
+  }
+
+  octx.putImageData(objectImg, 0, 0);
+  ctx.drawImage(objectCanvas, 0, 0, cv.width, cv.height);
+}
+
+function drawObstacles(){
+  ctx.imageSmoothingEnabled = false;
+  for(let y = 0; y < H; y++){
+    for(let x = 0; x < W; x++){
+      const m = obstacleMask[idx(x, y)];
+      if(m === CELL_EMPTY) continue;
+
+      ctx.fillStyle = m === CELL_INSULATOR
+        ? "rgba(117, 78, 39, 0.86)"
+        : "rgba(32, 207, 255, 0.52)";
+      ctx.fillRect(x * SCALE, y * SCALE, SCALE, SCALE);
     }
   }
 }
-function drawHeater(r){
-  const x=r.x*SCALE, y=r.y*SCALE, w=r.w*SCALE, h=r.h*SCALE;
-  const g=ctx.createLinearGradient(x,y,x+w,y+h);
-  g.addColorStop(0,"#ff8a3c"); g.addColorStop(1,"#ff3b2f");
-  ctx.fillStyle=g; ctx.fillRect(x,y,w,h);
-  ctx.fillStyle="rgba(255,220,120,.9)";
-  ctx.font=`${Math.min(w,h)*0.7}px serif`; ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillText("🔥",x+w/2,y+h/2);
+
+function drawSources(){
+  for(const source of simState.sources){
+    const x = source.x / LX * cv.width;
+    const y = source.y / LY * cv.height;
+    const radius = 9;
+    const glow = ctx.createRadialGradient(x, y, 2, x, y, 34);
+    glow.addColorStop(0, "rgba(255, 230, 92, 0.9)");
+    glow.addColorStop(0.4, "rgba(255, 149, 64, 0.35)");
+    glow.addColorStop(1, "rgba(255, 149, 64, 0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(x, y, 34, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#ffe45c";
+    ctx.strokeStyle = "#1a1206";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
 }
-function drawGhost(drag,hover){
-  const ok = canPlace(hover.x,hover.y,drag.w,drag.h);
-  ctx.fillStyle   = ok ? "rgba(120,220,160,.45)" : "rgba(255,90,90,.4)";
-  ctx.strokeStyle = ok ? "rgba(160,255,200,.95)" : "rgba(255,140,140,.95)";
-  ctx.lineWidth=2;
-  ctx.fillRect  (hover.x*SCALE,hover.y*SCALE,drag.w*SCALE,drag.h*SCALE);
-  ctx.strokeRect(hover.x*SCALE,hover.y*SCALE,drag.w*SCALE,drag.h*SCALE);
+
+function drawGrid(){
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.035)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for(let p = 0; p <= W; p += 5){
+    const x = p * SCALE + 0.5;
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, cv.height);
+  }
+  for(let p = 0; p <= H; p += 5){
+    const y = p * SCALE + 0.5;
+    ctx.moveTo(0, y);
+    ctx.lineTo(cv.width, y);
+  }
+  ctx.stroke();
+}
+
+function drawObjectContour(){
+  const segs = contourSegments();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(245, 252, 255, 0.95)";
+  ctx.beginPath();
+  const half = SCALE * 0.5;
+  for(const s of segs){
+    ctx.moveTo(s[0] * SCALE + half, s[1] * SCALE + half);
+    ctx.lineTo(s[2] * SCALE + half, s[3] * SCALE + half);
+  }
+  ctx.stroke();
+}
+
+function drawMassGraph(){
+  const w = graph.width;
+  const h = graph.height;
+  gctx.clearRect(0, 0, w, h);
+  gctx.fillStyle = "#0b1219";
+  gctx.fillRect(0, 0, w, h);
+
+  const padL = 38;
+  const padR = 12;
+  const padT = 14;
+  const padB = 28;
+  const plotW = w - padL - padR;
+  const plotH = h - padT - padB;
+  const maxTime = Math.max(45, simState.timeHistory[simState.timeHistory.length - 1] || 0);
+
+  gctx.strokeStyle = "rgba(255,255,255,.10)";
+  gctx.lineWidth = 1;
+  gctx.beginPath();
+  for(let k = 0; k <= 4; k++){
+    const y = padT + plotH * k / 4;
+    gctx.moveTo(padL, y);
+    gctx.lineTo(w - padR, y);
+  }
+  for(let k = 0; k <= 4; k++){
+    const x = padL + plotW * k / 4;
+    gctx.moveTo(x, padT);
+    gctx.lineTo(x, h - padB);
+  }
+  gctx.stroke();
+
+  gctx.fillStyle = "#8ea3b1";
+  gctx.font = "11px system-ui, sans-serif";
+  gctx.textAlign = "right";
+  gctx.textBaseline = "middle";
+  for(let k = 0; k <= 4; k++){
+    const value = 100 - k * 25;
+    const y = padT + plotH * k / 4;
+    gctx.fillText(`${value}`, padL - 8, y);
+  }
+
+  gctx.textAlign = "center";
+  gctx.textBaseline = "top";
+  gctx.fillText(`${maxTime.toFixed(0)} c`, padL + plotW, h - padB + 8);
+  gctx.fillText("0", padL, h - padB + 8);
+
+  if(simState.massHistory.length < 2) return;
+
+  gctx.strokeStyle = "#7bdcff";
+  gctx.lineWidth = 2.2;
+  gctx.beginPath();
+  for(let i = 0; i < simState.massHistory.length; i++){
+    const x = padL + (simState.timeHistory[i] / maxTime) * plotW;
+    const y = padT + (1 - clamp(simState.massHistory[i], 0, 105) / 100) * plotH;
+    if(i === 0) gctx.moveTo(x, y);
+    else gctx.lineTo(x, y);
+  }
+  gctx.stroke();
 }

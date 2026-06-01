@@ -34,8 +34,8 @@
     ];
   }
 
-  function tempColor(temp){
-    const raw = clamp01((temp - MIN_TEMP) / (MAX_TEMP - MIN_TEMP));
+  function tempColor(temp, minTemp = MIN_TEMP, maxTemp = MAX_TEMP){
+    const raw = clamp01((temp - minTemp) / (maxTemp - minTemp));
     const u = Math.pow(raw, GAMMA);
 
     for(let i = 0; i < STOPS.length - 1; i++){

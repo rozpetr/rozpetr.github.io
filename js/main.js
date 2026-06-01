@@ -1,232 +1,188 @@
 "use strict";
-/* Entry: UI tray, drag-drop placement, buttons, level lifecycle.
-   Physics runs in setInterval (not rAF) so it continues in background tabs.
-   Timer uses Date.now() wall-clock, independent of frame rate or tab visibility. */
-
-let running = false, finished = false;
-let startRealTime = 0;   // Date.now() when Start pressed; 0 = not started yet
-let gameElapsed   = 0;   // game-time seconds since start (speed-scaled)
-let gameElapsedAtFinish = 0;
-
-let physicsAccumulator = 0;
-let lastPhysicsTime    = 0;   // performance.now() at last physics tick
-const REAL_STEP = 1 / 60;    // seconds per physics step
-let speedMult = 1;            // 1 = normal, 3 = fast-forward
-
-let inv  = [];
-let drag = null;
-let hover = null;
-
-// ---------- progress ----------
-let progress = { unlocked: 0, completed: [] };
-
-function loadProgress(){
-  try {
-    const s = JSON.parse(localStorage.getItem("iceRescueProgress"));
-    if (s && typeof s.unlocked === "number") progress = s;
-  } catch(e){}
-}
-function saveProgress(){
-  localStorage.setItem("iceRescueProgress", JSON.stringify(progress));
-}
-function renderLevelList(){
-  const list = el("levelList"); list.innerHTML = "";
-  LEVELS.forEach((L, i) => {
-    const unlocked  = i <= progress.unlocked;
-    const completed = progress.completed.includes(i);
-    const active    = i === levelIndex;
-    const div = document.createElement("div");
-    div.className = "level-item" + (active ? " active" : "") + (unlocked ? "" : " locked");
-    div.innerHTML = `<span class="level-num">${i + 1}</span>
-      <span class="level-name">${L.name}</span>
-      ${completed ? '<span class="level-check">✓</span>' : ""}`;
-    if (unlocked){
-      div.addEventListener("click", () => { if (i !== levelIndex) loadLevel(i); });
-    }
-    list.appendChild(div);
-  });
-}
 
 const el = id => document.getElementById(id);
 
-// ---------- physics ticker ----------
-// setInterval is less throttled than rAF in background tabs.
-// Chrome limits it to ~1 call/s when hidden, but it still fires — so physics
-// keeps running and catches up when the player returns to the tab.
-setInterval(function () {
-  if (!running || finished) return;
+let pointerDown = false;
 
-  const now = performance.now();
-  let dt = lastPhysicsTime > 0 ? (now - lastPhysicsTime) / 1000 : 0;
-  lastPhysicsTime = now;
-  if (dt > 30) dt = 30;   // cap: never try to catch up more than 30 s at once
+function populateMaterials(){
+  const select = el("materialSelect");
+  select.innerHTML = "";
 
-  const scaled = dt * speedMult;
-  physicsAccumulator += scaled;
-  gameElapsed        += scaled;
-  while (physicsAccumulator >= REAL_STEP) {
-    step();
-    physicsAccumulator -= REAL_STEP;
-    if (iceRemaining() <= 0.001) {
-      if (!finished) finish(false);
-      return;
-    }
+  for(const name of Object.keys(MATERIALS)){
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
   }
-}, 8);
 
-// ---------- helpers ----------
-function elapsedSeconds(){
-  if (!startRealTime) return 0;
-  return finished ? gameElapsedAtFinish : gameElapsed;
-}
-function evtCell(e){
-  const r = cv.getBoundingClientRect();
-  return {
-    x: Math.floor((e.clientX - r.left) / (cv.width  / W)),
-    y: Math.floor((e.clientY - r.top)  / (cv.height / H))
-  };
+  select.value = simState.materialName;
 }
 
-// ---------- tray ----------
-function renderTray(){
-  const L    = LEVELS[levelIndex];
-  const list = el("toolList"); list.innerHTML = "";
-  L.tools.forEach((t, slot) => {
-    const empty = inv[slot] <= 0 || running || finished;
-    const col   = t.type === COOLER ? "#3fd2ff" : "#9a7b4f";
-    const div   = document.createElement("div");
-    div.className = "tool" + (empty ? " empty" : "");
-    div.innerHTML = `<div class="swatch" style="background:${col}"></div>
-      <div class="meta"><div class="name">${t.name}</div>
-      <div class="desc">${t.desc} · ${t.w}×${t.h}</div></div>
-      <div class="count">×${inv[slot]}</div>`;
-    if (!empty){
-      div.addEventListener("pointerdown", e => {
-        e.preventDefault();
-        drag = { type: t.type, w: t.w, h: t.h, slot, temp: t.temp };
-        window.addEventListener("pointermove", onDragMove);
-        window.addEventListener("pointerup",   onDragUp, { once: true });
-      });
-    }
-    list.appendChild(div);
+function setActiveButton(container, attr, value){
+  for(const button of container.querySelectorAll("button")){
+    button.classList.toggle("active", button.dataset[attr] === value);
+  }
+}
+
+function updateSliderLabels(){
+  el("powerValue").textContent = `${(simState.sourcePower / 1e7).toFixed(1)}e7 Вт`;
+  el("ambientValue").textContent = `${simState.ambientDelta.toFixed(1)} °C`;
+  el("sizeValue").textContent = `${simState.objectSize.toFixed(3)} м`;
+  el("brushValue").textContent = `${simState.brushRadius} кл.`;
+}
+
+function refreshReadouts(){
+  el("timeReadout").textContent = `${simState.elapsed.toFixed(1)} c`;
+  el("massReadout").textContent = `${Math.max(0, massPercent()).toFixed(1)}%`;
+  el("runBtn").textContent = simState.running ? "Пауза" : "Пуск";
+  el("speedBtn").textContent = `${simState.speed}x`;
+}
+
+function cellFromPointer(event){
+  const rect = cv.getBoundingClientRect();
+  const x = Math.floor((event.clientX - rect.left) / rect.width * W);
+  const y = Math.floor((event.clientY - rect.top) / rect.height * H);
+  return { x: clamp(x, 0, W - 1), y: clamp(y, 0, H - 1) };
+}
+
+function applyCurrentTool(cell, continuous = false){
+  if(!inBounds(cell.x, cell.y)) return;
+
+  switch(simState.tool){
+    case "source":
+      if(!continuous){
+        addSourceAtCell(cell.x, cell.y);
+      }
+      break;
+    case "object":
+      moveObjectToCell(cell.x, cell.y);
+      break;
+    case "insulator":
+      paintObstacle(cell.x, cell.y, CELL_INSULATOR);
+      break;
+    case "cooler":
+      paintObstacle(cell.x, cell.y, CELL_COOLER);
+      break;
+    case "eraser":
+      paintObstacle(cell.x, cell.y, CELL_EMPTY);
+      break;
+  }
+}
+
+function wireControls(){
+  el("materialSelect").addEventListener("change", event => {
+    simState.materialName = event.target.value;
+    simState.material = MATERIALS[simState.materialName];
+    resetSimulation();
+  });
+
+  el("shapeControls").addEventListener("click", event => {
+    const button = event.target.closest("button[data-shape]");
+    if(!button) return;
+    simState.objectShape = button.dataset.shape;
+    setActiveButton(el("shapeControls"), "shape", simState.objectShape);
+    resetSimulation();
+  });
+
+  el("toolControls").addEventListener("click", event => {
+    const button = event.target.closest("button[data-tool]");
+    if(!button) return;
+    simState.tool = button.dataset.tool;
+    setActiveButton(el("toolControls"), "tool", simState.tool);
+  });
+
+  el("powerSlider").addEventListener("input", event => {
+    simState.sourcePower = Number(event.target.value);
+    calculateSources();
+    updateSliderLabels();
+  });
+
+  el("ambientSlider").addEventListener("input", event => {
+    simState.ambientDelta = Number(event.target.value);
+    updateSliderLabels();
+    resetSimulation();
+  });
+
+  el("sizeSlider").addEventListener("input", event => {
+    simState.objectSize = Number(event.target.value);
+    updateSliderLabels();
+    resetSimulation();
+  });
+
+  el("brushSlider").addEventListener("input", event => {
+    simState.brushRadius = Number(event.target.value);
+    updateSliderLabels();
+  });
+
+  el("runBtn").addEventListener("click", () => {
+    simState.running = !simState.running;
+  });
+
+  el("stepBtn").addEventListener("click", () => {
+    stepSimulation(simState.speed);
+  });
+
+  el("speedBtn").addEventListener("click", () => {
+    simState.speed = simState.speed === 1 ? 4 : simState.speed === 4 ? 12 : 1;
+  });
+
+  el("resetBtn").addEventListener("click", resetSimulation);
+
+  el("clearBtn").addEventListener("click", () => {
+    simState.running = false;
+    clearScene();
+  });
+
+  el("optBtn").addEventListener("click", () => {
+    const best = findOptimalPosition();
+    simState.objectCenter = best;
+    resetSimulation();
+  });
+
+  cv.addEventListener("pointerdown", event => {
+    pointerDown = true;
+    cv.setPointerCapture(event.pointerId);
+    applyCurrentTool(cellFromPointer(event), false);
+  });
+
+  cv.addEventListener("pointermove", event => {
+    if(!pointerDown) return;
+    applyCurrentTool(cellFromPointer(event), true);
+  });
+
+  cv.addEventListener("pointerup", event => {
+    pointerDown = false;
+    cv.releasePointerCapture(event.pointerId);
+  });
+
+  cv.addEventListener("pointercancel", () => {
+    pointerDown = false;
   });
 }
 
-// ---------- HUD ----------
-function refreshHUD(){
-  const L = LEVELS[levelIndex];
-  el("levelName").textContent = L.name;
-  el("levelNo").textContent   = `${levelIndex + 1}/${LEVELS.length}`;
-  el("needPct").textContent   = Math.round(L.need * 100) + "%";
-  el("hint").textContent      = L.hint;
-  const remain = iceRemaining();
-  el("icePct").textContent    = Math.round(remain * 100) + "%";
-  el("iceBar").style.width    = (remain * 100) + "%";
-  const tleft = Math.max(0, L.timer - elapsedSeconds());
-  el("timeLeft").textContent  = (running || finished) ? tleft.toFixed(1) + "s" : L.timer + "s";
-  el("startBtn").disabled     = running;
+function syncInitialControls(){
+  el("powerSlider").value = simState.sourcePower;
+  el("ambientSlider").value = simState.ambientDelta;
+  el("sizeSlider").value = simState.objectSize;
+  el("brushSlider").value = simState.brushRadius;
+  setActiveButton(el("shapeControls"), "shape", simState.objectShape);
+  setActiveButton(el("toolControls"), "tool", simState.tool);
+  updateSliderLabels();
 }
 
-// ---------- drag / placement ----------
-function onDragMove(e){
-  if (!drag) return;
-  const c = evtCell(e);
-  hover = { x: c.x - (drag.w >> 1), y: c.y - (drag.h >> 1) };
-}
-function onDragUp(){
-  window.removeEventListener("pointermove", onDragMove);
-  if (drag && hover && canPlace(hover.x, hover.y, drag.w, drag.h) && inv[drag.slot] > 0){
-    const p = { type: drag.type, x: hover.x, y: hover.y, w: drag.w, h: drag.h, slot: drag.slot, temp: drag.temp };
-    placed.push(p); applyTool(p); inv[drag.slot]--;
-    renderTray();
-  }
-  drag = null; hover = null;
-}
-// rotate while dragging
-window.addEventListener("keydown", e => {
-  if ((e.key === "r" || e.key === "R") && drag){ const t = drag.w; drag.w = drag.h; drag.h = t; }
-});
-// click a placed tool (before start) to pick it back up
-cv.addEventListener("pointerdown", e => {
-  if (running || finished || drag) return;
-  const c = evtCell(e);
-  for (let k = placed.length - 1; k >= 0; k--){
-    const p = placed[k];
-    if (c.x >= p.x && c.x < p.x + p.w && c.y >= p.y && c.y < p.y + p.h){
-      for (let y = p.y; y < p.y + p.h; y++) for (let x = p.x; x < p.x + p.w; x++)
-        if (inBounds(x, y)){ const i = idx(x, y); if (mat[i] === p.type){ mat[i] = AIR; T[i] = LEVELS[levelIndex].ambient; } }
-      inv[p.slot]++; placed.splice(k, 1); renderTray();
-      return;
-    }
-  }
-});
-
-// ---------- buttons ----------
-el("startBtn").onclick = () => {
-  if (!running && !finished){
-    running            = true;
-    startRealTime      = Date.now();
-    lastPhysicsTime    = performance.now();
-    physicsAccumulator = 0;
-    renderTray();
-  }
-};
-el("resetBtn").onclick  = () => loadLevel(levelIndex);
-el("speedBtn").onclick  = () => {
-  speedMult = speedMult === 1 ? 3 : 1;
-  el("speedBtn").textContent = speedMult === 3 ? "⏩ 3×" : "⏩ 1×";
-};
-el("bannerBtn").onclick = () => {
-  el("banner").classList.remove("show");
-  if (el("bannerText").classList.contains("win")) levelIndex = (levelIndex + 1) % LEVELS.length;
-  loadLevel(levelIndex);
-};
-el("showHint").onclick = () => {
-  el("hint").classList.toggle("active");
-};
-
-// ---------- lifecycle ----------
-function loadLevel(li){
-  levelIndex = li; running = false; finished = false;
-  startRealTime = 0; gameElapsed = 0; gameElapsedAtFinish = 0;
-  physicsAccumulator = 0; lastPhysicsTime = 0;
-  placed = []; inv = LEVELS[li].tools.map(t => t.count);
-  buildLevel(li);
-  el("banner").classList.remove("show");
-  el("hint").classList.remove("active");
-  renderLevelList(); renderTray(); refreshHUD();
-}
-function finish(win){
-  if (finished) return;
-  finished = true; running = false;
-  gameElapsedAtFinish = gameElapsed;
-  if (win){
-    if (!progress.completed.includes(levelIndex)) progress.completed.push(levelIndex);
-    if (levelIndex + 1 < LEVELS.length && levelIndex + 1 > progress.unlocked)
-      progress.unlocked = levelIndex + 1;
-    saveProgress();
-    renderLevelList();
-  }
-  el("bannerText").textContent = win ? "SAVED! ❄️" : "MELTED 💧";
-  el("bannerText").className   = "big " + (win ? "win" : "lose");
-  el("bannerSub").textContent  = win
-    ? `Ice remaining ${Math.round(iceRemaining() * 100)}%`
-    : "The cube melted away. Try a different placement.";
-  el("bannerBtn").textContent  = win ? "Next level ▶" : "Retry ↺";
-  el("banner").classList.add("show");
-}
-
-// ---------- main loop (render + timer check only — physics is in setInterval above) ----------
 function loop(){
-  if (running && !finished){
-    const L = LEVELS[levelIndex];
-    if (elapsedSeconds() >= L.timer) finish(iceRemaining() >= L.need);
+  if(simState.running){
+    stepSimulation(simState.speed);
   }
-  render(drag, hover);
-  refreshHUD();
+
+  render();
+  refreshReadouts();
   requestAnimationFrame(loop);
 }
 
-loadProgress();
-loadLevel(0);
+populateMaterials();
+syncInitialControls();
+ensureArrays();
+resetSimulation();
+wireControls();
 loop();

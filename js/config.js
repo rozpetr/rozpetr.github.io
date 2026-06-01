@@ -1,20 +1,68 @@
 "use strict";
-/* Tunables + material constants. Loaded first; later scripts share these globals. */
 
-// ---------- grid / loop tunables ----------
-const W = 100, H = 72;          // grid cells
-const SCALE = 8;                // px per cell
-const SUBSTEPS = 10;             // physics substeps / frame
-const DT = 0.13333;            // sim time per substep (stable: dt < 1/(4*alpha_max))
-const TIME_PER_FRAME = SUBSTEPS * DT; // sim-units advanced each frame
+const W = 60;
+const H = 60;
+const SCALE = 10;
 
-// ---------- thermodynamics ----------
-const MELT_T   = 0;             // ice melting point (C) — physical constant
-const L_CELL   = 220;           // latent heat budget per full ice cell
-const CONVECT  = 0.004;         // ambient relaxation coeff for air (convection/radiation approx)
+const LX = 0.1;
+const LY = 0.1;
+const DX = LX / W;
+const DY = LY / H;
 
-// ---------- materials ----------
-const AIR=0, ICE=1, INSUL=2, COOLER=3, HEATER=4;
-//                 AIR    ICE   INSUL  COOLER HEATER
-const MAT_K = [   0.160, 0.500, 0.004, 0.600, 0.600 ]; // thermal conductivity
-const MAT_C = [   0.200, 1.000, 0.500, 1.000, 1.000 ]; // volumetric heat capacity
+const SOURCE_SIGMA = 0.005;
+const SOURCE_BLOCKED_TRANSMISSION = 0.03;
+const PHYSICS_DT = 0.01;
+const SUBSTEPS = 30;
+
+const CELL_EMPTY = 0;
+const CELL_INSULATOR = 1;
+const CELL_COOLER = 2;
+
+const SHAPES = {
+  square: "Квадрат",
+  circle: "Круг",
+};
+
+const TOOLS = {
+  source: "Источник",
+  object: "Объект",
+  insulator: "Изолятор",
+  cooler: "Охладитель",
+  eraser: "Стереть",
+};
+
+const INSULATOR_MATERIAL = {
+  rho: 160.0,
+  cp: 1100.0,
+  k: 0.045,
+};
+
+const MATERIALS = {
+  "Водяной лёд": {
+    rho: 917.0,
+    cp: 2090.0,
+    kSolid: 2.22,
+    kLiquid: 0.58,
+    latentHeat: 334000.0,
+    meltTemp: 0.0,
+    phaseHalfWidth: 0.5,
+  },
+  "Парафин": {
+    rho: 900.0,
+    cp: 2100.0,
+    kSolid: 0.24,
+    kLiquid: 0.15,
+    latentHeat: 200000.0,
+    meltTemp: 54.0,
+    phaseHalfWidth: 1.0,
+  },
+  "Галлий": {
+    rho: 5910.0,
+    cp: 370.0,
+    kSolid: 32.0,
+    kLiquid: 29.0,
+    latentHeat: 80000.0,
+    meltTemp: 29.76,
+    phaseHalfWidth: 0.2,
+  },
+};

@@ -1,59 +1,97 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ice Cube Rescue</title>
+<title>Тепловая песочница</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div>
-    <div class="stage">
-      <canvas id="cv"></canvas>
-      <div class="banner" id="banner">
-        <div class="big" id="bannerText">WIN</div>
-        <div id="bannerSub"></div>
-        <button id="bannerBtn">Next</button>
+  <main class="app">
+    <section class="workspace">
+      <div class="topbar">
+        <div>
+          <h1>Тепловая песочница</h1>
+          <p class="sub">Энтальпийная модель фазового перехода на двумерной сетке</p>
+        </div>
+        <div class="readouts">
+          <div><span>Время</span><b id="timeReadout">0.0 c</b></div>
+          <div><span>Масса</span><b id="massReadout">100%</b></div>
+        </div>
       </div>
-    </div>
-    <div class="legend">
-      <span><i style="background:#ff5a3c"></i>Hot</span>
-      <span><i style="background:#7b8aff"></i>Cold</span>
-      <span><i style="background:#bfe9ff"></i>Ice</span>
-      <span><i style="background:#9a7b4f"></i>Insulator</span>
-      <span><i style="background:#3fd2ff"></i>Cooler</span>
-      <span style="margin-left:auto">Press <b>R</b> to rotate a tool while dragging</span>
-    </div>
-  </div>
 
-  <div class="panel">
-    <div class="section-label">Levels</div>
-    <div id="levelList"></div>
+      <div class="canvasRow">
+        <canvas id="cv" aria-label="Тепловое поле"></canvas>
+        <aside class="graphPanel">
+          <div class="panelTitle">Масса объекта</div>
+          <canvas id="massGraph" aria-label="График массы объекта"></canvas>
+          <div class="legend">
+            <span><i class="hot"></i>источник</span>
+            <span><i class="object"></i>объект</span>
+            <span><i class="insul"></i>изолятор</span>
+            <span><i class="cooler"></i>охладитель</span>
+          </div>
+        </aside>
+      </div>
+    </section>
 
-    <div class="stat"><span id="levelName">Level</span><b id="levelNo">1/3</b></div>
-    <div class="stat"><span>Time left</span><b id="timeLeft">--</b></div>
-    <div class="stat"><span>Ice remaining</span><b id="icePct">100%</b></div>
-    <div class="bar"><span id="iceBar" style="width:100%"></span></div>
-    <div class="stat" style="margin-top:6px"><span>Need to survive</span><b id="needPct">25%</b></div>
+    <aside class="panel">
+      <div class="section">
+        <label for="materialSelect">Материал объекта</label>
+        <select id="materialSelect"></select>
+      </div>
 
-    <div class="tray">
-      <h3>Tools</h3>
-      <div id="toolList"></div>
-    </div>
+      <div class="section split">
+        <label>Форма</label>
+        <div class="segmented" id="shapeControls">
+          <button type="button" data-shape="square" class="active">Квадрат</button>
+          <button type="button" data-shape="circle">Круг</button>
+        </div>
+      </div>
 
-    <div class="btns">
-      <button id="startBtn">▶ Start</button>
-      <button id="resetBtn" class="ghost">↺ Reset</button>
-      <button id="speedBtn" class="ghost">⏩ 1×</button>
-    </div>
-    
-    <div id="showHint">𖡊 Show hint</div>
-    <div class="hint" id="hint"></div>
-  </div>
+      <div class="section">
+        <label for="powerSlider">Мощность источников <b id="powerValue"></b></label>
+        <input id="powerSlider" type="range" min="10000000" max="200000000" step="1000000">
+      </div>
 
-  <!-- classic scripts share global scope; load order matters, no bundler/server needed -->
+      <div class="section">
+        <label for="ambientSlider">dT среды <b id="ambientValue"></b></label>
+        <input id="ambientSlider" type="range" min="-10" max="10" step="0.1">
+      </div>
+
+      <div class="section">
+        <label for="sizeSlider">Размер объекта <b id="sizeValue"></b></label>
+        <input id="sizeSlider" type="range" min="0.01" max="0.08" step="0.001">
+      </div>
+
+      <div class="section">
+        <label for="brushSlider">Кисть <b id="brushValue"></b></label>
+        <input id="brushSlider" type="range" min="1" max="4" step="1">
+      </div>
+
+      <div class="section">
+        <label>Инструмент</label>
+        <div class="toolGrid" id="toolControls">
+          <button type="button" data-tool="source" class="active">Источник</button>
+          <button type="button" data-tool="object">Объект</button>
+          <button type="button" data-tool="insulator">Изолятор</button>
+          <button type="button" data-tool="cooler">Охладитель</button>
+          <button type="button" data-tool="eraser">Стереть</button>
+        </div>
+      </div>
+
+      <div class="buttonGrid">
+        <button id="runBtn" type="button">Пуск</button>
+        <button id="stepBtn" type="button" class="ghost">Шаг</button>
+        <button id="speedBtn" type="button" class="ghost">1x</button>
+        <button id="resetBtn" type="button" class="ghost">Перезапуск</button>
+        <button id="optBtn" type="button" class="ghost wide">Найти оптимум</button>
+        <button id="clearBtn" type="button" class="danger wide">Очистить сцену</button>
+      </div>
+    </aside>
+  </main>
+
   <script src="js/config.js"></script>
-  <script src="js/levels.js"></script>
   <script src="js/sim.js"></script>
   <script src="js/marching.js"></script>
   <script src="js/thermalPalette.js"></script>
